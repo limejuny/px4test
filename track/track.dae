@@ -26377,7 +26377,7 @@
         <material id="ID996" name="Sumele_Dress2">
             <instance_effect url="#ID997" />
         </material>
-        <material id="ID3605" name="Groundcover_Brick_Crushed">
+        <material id="ID3605" name="Track">
             <instance_effect url="#ID3606" />
         </material>
         <material id="ID3616" name="material">
@@ -26386,7 +26386,7 @@
         <material id="ID3660" name="Vegetation_Grass_Artificial">
             <instance_effect url="#ID3661" />
         </material>
-        <material id="ID3681" name="White_Subway_Tile">
+        <material id="ID3681" name="Track_Line">
             <instance_effect url="#ID3682" />
         </material>
         <material id="ID3867" name="edge_color000255">
@@ -26562,13 +26562,13 @@
     </library_effects>
     <library_images>
         <image id="ID3607">
-            <init_from>track/Groundcover_Brick_Crushed.jpg</init_from>
+            <init_from>track/Track.jpg</init_from>
         </image>
         <image id="ID3662">
             <init_from>track/Vegetation_Grass_Artificial.jpg</init_from>
         </image>
         <image id="ID3683">
-            <init_from>track/White_Subway_Tile.jpg</init_from>
+            <init_from>track/Track_Line.jpg</init_from>
         </image>
     </library_images>
     <scene>
