@@ -137,9 +137,10 @@ xm_per_pix = 3.7 / 720
 
 # frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
 #               int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-frame_size = (1920, 1080)
-fourcc = cv2.VideoWriter_fourcc(*'XVID')
-out1 = cv2.VideoWriter('opencv_youtube.mp4', fourcc, 20.0, frame_size)
+# frame_size = (1920, 1080)
+frame_size = (640, 360)
+# fourcc = cv2.VideoWriter_fourcc(*'XVID')
+# out1 = cv2.VideoWriter('opencv_youtube.avi', fourcc, 20.0, (640,480))
 
 
 def color_filter(image):
@@ -147,15 +148,18 @@ def color_filter(image):
 
     # lower = np.array([10, 0, 12])
     # upper = np.array([200, 255, 255])
-    lower = np.array([20, 150, 20])
-    upper = np.array([255, 255, 255])
+    lower = np.array([0, 40, 0])
+    upper = np.array([120, 100, 110])
 
-    yellow_lower = np.array([0, 85, 81])
-    yellow_upper = np.array([190, 255, 255])
+    # yellow_lower = np.array([0, 85, 81])
+    # yellow_upper = np.array([190, 255, 255])
 
-    yellow_mask = cv2.inRange(hls, yellow_lower, yellow_upper)
-    white_mask = cv2.inRange(hls, lower, upper)
-    mask = cv2.bitwise_or(yellow_mask, white_mask)
+    # yellow_mask = cv2.inRange(hls, yellow_lower, yellow_upper)
+    # white_mask = cv2.inRange(hls, lower, upper)
+    # mask = cv2.bitwise_or(yellow_mask, white_mask)
+    # masked = cv2.bitwise_and(image, image, mask=mask)
+
+    mask = cv2.inRange(hls, lower, upper)
     masked = cv2.bitwise_and(image, image, mask=mask)
 
     return masked
@@ -191,24 +195,21 @@ def roi(image):
 
 def wrapping(image):
     (h, w) = (image.shape[0], image.shape[1])  #1080 : 1920
+    # print(h)
+    # print(w)
     Orimid = w / 2
-    a = [0.4 * w - 60, 0.33 * h]
-    b = [0.8 * w + 60, 0.33 * h]
-    c = [0.2 * w + 50, h]
-    d = [0.9 * w, h]
-    # a = [0.5 * w - 20, 0.66 * h]
-    # b = [0.6 * w + 10, 0.66 * h]
-    # c = [0.4 * w + 50, 0.9 * h]
-    # d = [0.7 * w, 0.9 * h]
+
+    a = [0.3 * w, 0.6 * h]
+    b = [0.7 * w, 0.6 * h]
+    c = [0.1 * w, 0.9 * h]
+    d = [0.9 * w, 0.9 * h]
     enddist = abs(a[0] - b[0])
     oridist = abs(c[0] - d[0])
     cmdist = abs(c[0] - Orimid)
+
     # warp된 이미지에서 찾을 수 있는 원본이미지의 중간
     warpmid = (int(w * cmdist / oridist), h)
     distlist = (enddist, a, b, h, w)
-
-    # source = np.float32([[w // 2 - 30, h * 0.53], [w // 2 + 60, h * 0.53], [w * 0.3, h], [w, h]]) #input point  #좌상, 우상, 좌하, 우하
-    # destination = np.float32([[0, 0], [w-350, 0], [400, h], [w-150, h]])                          #output Point
 
     source = np.float32([a, b, c, d])  #input point  #좌상, 우상, 좌하, 우하
     destination = np.float32([[0, 0], [w, 0], [0, h], [w, h]])  #output Point
@@ -222,7 +223,7 @@ def wrapping(image):
 
 def plothistogram(image):
     histogram = np.sum(image[image.shape[0] // 2:, :], axis=0)
-    midpoint = np.int(histogram.shape[0] / 2)
+    midpoint = np.int_(histogram.shape[0] / 2)
     leftbase = np.argmax(histogram[:midpoint])
     rightbase = np.argmax(histogram[midpoint:]) + midpoint
 
@@ -233,7 +234,7 @@ def slide_window_search(binary_warped, left_current, right_current):
     out_img = np.dstack((binary_warped, binary_warped, binary_warped))
 
     nwindows = 4
-    window_height = np.int(binary_warped.shape[0] / nwindows)
+    window_height = np.int_(binary_warped.shape[0] / nwindows)
     nonzero = binary_warped.nonzero()  # 선이 있는 부분의 인덱스만 저장
     nonzero_y = np.array(nonzero[0])  # 선이 있는 부분 y의 인덱스 값
     nonzero_x = np.array(nonzero[1])  # 선이 있는 부분 x의 인덱스 값
@@ -389,7 +390,7 @@ while True:
 
     img = video.frame()
     cv2.imshow('video', img)
-    out1.write(img)
+    # out1.write(img)
 
     ## 조감도 wrapped img
     wrapped_img, minverse, warpmid, distlist = wrapping(img)
@@ -405,8 +406,8 @@ while True:
 
     ## 조감도 선 따기 wrapped img threshold
     _gray = cv2.cvtColor(w_f_r_img, cv2.COLOR_BGR2GRAY)
-    ret, thresh = cv2.threshold(_gray, 200, 255, cv2.THRESH_BINARY)
-    # ret, thresh = cv2.threshold(_gray, 10, 255, cv2.THRESH_BINARY)
+    # ret, thresh = cv2.threshold(_gray, 200, 255, cv2.THRESH_BINARY)
+    ret, thresh = cv2.threshold(_gray, 10, 255, cv2.THRESH_BINARY)
     cv2.imshow('threshold', thresh)
 
     ## 선 분포도 조사 histogram
@@ -424,6 +425,7 @@ while True:
         meanPts, result = draw_lane_lines(img, thresh, minverse, draw_info,
                                           warpmid, distlist)
         cv2.imshow("result", result)
+        # out1.write(result)
     else:
         print(draw_info)
 
