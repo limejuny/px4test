@@ -1,6 +1,7 @@
 import cv2
 import gi
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 import time
 
@@ -199,10 +200,10 @@ def wrapping(image):
     # print(w)
     Orimid = w / 2
 
-    a = [0.3 * w, 0.6 * h]
-    b = [0.7 * w, 0.6 * h]
-    c = [0.1 * w, 0.9 * h]
-    d = [0.9 * w, 0.9 * h]
+    a = [0.3 * w, 0.7 * h]
+    b = [0.7 * w, 0.7 * h]
+    c = [0.15 * w, 0.95 * h]
+    d = [0.85 * w, 0.95 * h]
     enddist = abs(a[0] - b[0])
     oridist = abs(c[0] - d[0])
     cmdist = abs(c[0] - Orimid)
@@ -364,10 +365,30 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
     res = getAngle3P((distlist[4], distlist[3]),
                      (distlist[4] // 2, distlist[3]), endponit,
                      "CW")  #각도 구하는 함수
+    print(res)
 
+    # res = math.atan(
+    #     (frame_size[1] - endponit[1]) / ((frame_size[0] / 2) - endponit[0]))
+
+    if frame_size[0] / 2 == endponit[0]:
+        res = 90
+    elif frame_size[0] / 2 > endponit[0]:
+        res = math.atan((frame_size[1] - endponit[1]) /
+                        ((frame_size[0] / 2) - endponit[0])) / math.pi * 180
+    else:
+        res = (1 - math.atan(
+            (frame_size[1] - endponit[1]) /
+            (endponit[0] - (frame_size[0] / 2))) / math.pi) * 180
+
+    #각도 예외 처리 30도 이상의 각도 변화 없앰
+    # if (res > 120):
+    #     res = 90
+    # elif (res < 60):
+    #     res = 90
     file = open('data.txt', 'w')
     file.write(str(res))
     file.close()
+    print(endponit)
     print(res)  #각도
 
     newwarp = cv2.warpPerspective(
