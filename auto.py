@@ -1,9 +1,14 @@
+#!/usr/bin/env python3
+
+import asyncio
 import cv2
 import gi
-import numpy as np
 import math
 import matplotlib.pyplot as plt
-import time
+import numpy as np
+
+from mavsdk import System
+from mavsdk.offboard import (OffboardError, PositionNedYaw)
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
@@ -92,7 +97,7 @@ class Video():
                            dtype=np.uint8)
         return array
 
-    def frame(self):
+    async def frame(self):
         """ Get Frame
         Returns:
             iterable: bool and image frame, cap.read() output
@@ -127,38 +132,39 @@ class Video():
 
 # }}}
 
-# cap = cv2.VideoCapture(
-#     'udpsrc port=5600 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! appsink',
-#     cv2.CAP_GSTREAMER)
-# video = Video()
-# cap = video.frame()
 
-ym_per_pix = 30 / 720
-xm_per_pix = 3.7 / 720
+# {{{ CV
+def wrapping(image):
+    (h, w) = (image.shape[0], image.shape[1])  # 360:640
+    Orimid = w / 2
 
-# frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-#               int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-# frame_size = (1920, 1080)
-frame_size = (640, 360)
-# fourcc = cv2.VideoWriter_fourcc(*'XVID')
-# out1 = cv2.VideoWriter('opencv_youtube.avi', fourcc, 20.0, (640,480))
+    a = [0.3 * w, 0.7 * h]
+    b = [0.7 * w, 0.7 * h]
+    c = [0.15 * w, 0.95 * h]
+    d = [0.85 * w, 0.95 * h]
+    enddist = abs(a[0] - b[0])
+    oridist = abs(c[0] - d[0])
+    cmdist = abs(c[0] - Orimid)
+
+    # warp된 이미지에서 찾을 수 있는 원본이미지의 중간
+    warpmid = (int(w * cmdist / oridist), h)
+    distlist = (enddist, a, b, h, w)
+
+    source = np.float32([a, b, c, d])  #input point  #좌상, 우상, 좌하, 우하
+    destination = np.float32([[0, 0], [w, 0], [0, h], [w, h]])  #output Point
+    transform_matrix = cv2.getPerspectiveTransform(source, destination)
+    minv = cv2.getPerspectiveTransform(
+        destination, source)  #minv = warpping된 이미지를 원금감을 주기 위한 반다의 matrix값을 저장
+    _image = cv2.warpPerspective(image, transform_matrix, (w, h))
+
+    return _image, minv, warpmid, distlist
 
 
 def color_filter(image):
     hls = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
 
-    # lower = np.array([10, 0, 12])
-    # upper = np.array([200, 255, 255])
     lower = np.array([0, 40, 0])
     upper = np.array([120, 100, 110])
-
-    # yellow_lower = np.array([0, 85, 81])
-    # yellow_upper = np.array([190, 255, 255])
-
-    # yellow_mask = cv2.inRange(hls, yellow_lower, yellow_upper)
-    # white_mask = cv2.inRange(hls, lower, upper)
-    # mask = cv2.bitwise_or(yellow_mask, white_mask)
-    # masked = cv2.bitwise_and(image, image, mask=mask)
 
     mask = cv2.inRange(hls, lower, upper)
     masked = cv2.bitwise_and(image, image, mask=mask)
@@ -192,34 +198,6 @@ def roi(image):
     masked_image = cv2.bitwise_and(image, mask)
 
     return masked_image
-
-
-def wrapping(image):
-    (h, w) = (image.shape[0], image.shape[1])  #1080 : 1920
-    # print(h)
-    # print(w)
-    Orimid = w / 2
-
-    a = [0.3 * w, 0.7 * h]
-    b = [0.7 * w, 0.7 * h]
-    c = [0.15 * w, 0.95 * h]
-    d = [0.85 * w, 0.95 * h]
-    enddist = abs(a[0] - b[0])
-    oridist = abs(c[0] - d[0])
-    cmdist = abs(c[0] - Orimid)
-
-    # warp된 이미지에서 찾을 수 있는 원본이미지의 중간
-    warpmid = (int(w * cmdist / oridist), h)
-    distlist = (enddist, a, b, h, w)
-
-    source = np.float32([a, b, c, d])  #input point  #좌상, 우상, 좌하, 우하
-    destination = np.float32([[0, 0], [w, 0], [0, h], [w, h]])  #output Point
-    transform_matrix = cv2.getPerspectiveTransform(source, destination)
-    minv = cv2.getPerspectiveTransform(
-        destination, source)  #minv = warpping된 이미지를 원금감을 주기 위한 반다의 matrix값을 저장
-    _image = cv2.warpPerspective(image, transform_matrix, (w, h))
-
-    return _image, minv, warpmid, distlist
 
 
 def plothistogram(image):
@@ -298,35 +276,10 @@ def slide_window_search(binary_warped, left_current, right_current):
         out_img[nonzero_y[left_lane], nonzero_x[left_lane]] = [255, 0, 0]
         out_img[nonzero_y[right_lane], nonzero_x[right_lane]] = [0, 0, 255]
 
-        # plt.imshow(out_img)
-        # plt.plot(left_fitx, ploty, color = 'yellow')
-        # plt.plot(right_fitx, ploty, color = 'yellow')
-        # plt.xlim(0, 1280)
-        # plt.ylim(720, 0)
-        # plt.show()
-
         ret = {'left_fitx': ltx, 'right_fitx': rtx, 'ploty': ploty}
 
         return ret
     return 90  #라인인식 못 하면 90도를 리턴
-
-
-def __angle_between(p1, p2):
-    # 두점 사이의 각도:(getAngle3P 계산용) 시계방향으로 계산한다. P1-(0,0)-P2의 각도를 시계방향으로
-    ang1 = np.arctan2(*p1[::-1])
-    ang2 = np.arctan2(*p2[::-1])
-    res = np.rad2deg((ang1 - ang2) % (2 * np.pi))
-    return res
-
-
-def getAngle3P(p1, p2, p3, direction="CW"):  #세점 사이의 각도 1->2->3
-    pt1 = (p1[0] - p2[0], p1[1] - p2[1])
-    pt2 = (p3[0] - p2[0], p3[1] - p2[1])
-    res = __angle_between(pt1, pt2)
-    res = (res + 360) % 360
-    if direction == "CCW":  #반시계방향
-        res = (360 - res) % 360
-    return res
 
 
 def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
@@ -351,44 +304,28 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
 
     warpend = (np.int_([pts_mean[0][-1][0]]), np.int_([pts_mean[0][-1][1]])
               )  #가야할 곳의 끝점
-    endponit = (int(distlist[1][0] + distlist[0] * warpend[0] / distlist[4]),
+    endpoint = (int(distlist[1][0] + distlist[0] * warpend[0] / distlist[4]),
                 int(distlist[1][1]))  #원본이미지의 끝점
-    widthend = (endponit[0], distlist[3])  #끝점에서 직각으로 내려오는 점
+    widthend = (endpoint[0], distlist[3])  #끝점에서 직각으로 내려오는 점
 
-    cv2.line(original_image, endponit, endponit, (0, 255, 255), 10,
+    cv2.line(original_image, endpoint, endpoint, (0, 255, 255), 10,
              4)  # 두 점을 잇는 선 표시
 
-    ############
-    # cv2.line(color_warp, warpend, warpmid, (0, 0, 255), 10, 4)  # 두 점을 잇는 선 표시
-    ############
-
-    res = getAngle3P((distlist[4], distlist[3]),
-                     (distlist[4] // 2, distlist[3]), endponit,
-                     "CW")  #각도 구하는 함수
-    print(res)
-
-    # res = math.atan(
-    #     (frame_size[1] - endponit[1]) / ((frame_size[0] / 2) - endponit[0]))
-
-    if frame_size[0] / 2 == endponit[0]:
+    frame_size = (original_image.shape[1], original_image.shape[0])
+    if frame_size[0] / 2 == endpoint[0]:
         res = 90
-    elif frame_size[0] / 2 > endponit[0]:
-        res = math.atan((frame_size[1] - endponit[1]) /
-                        ((frame_size[0] / 2) - endponit[0])) / math.pi * 180
+    elif frame_size[0] / 2 > endpoint[0]:
+        res = math.atan((frame_size[1] - endpoint[1]) /
+                        ((frame_size[0] / 2) - endpoint[0])) / math.pi * 180
     else:
         res = (1 - math.atan(
-            (frame_size[1] - endponit[1]) /
-            (endponit[0] - (frame_size[0] / 2))) / math.pi) * 180
+            (frame_size[1] - endpoint[1]) /
+            (endpoint[0] - (frame_size[0] / 2))) / math.pi) * 180
 
     #각도 예외 처리 30도 이상의 각도 변화 없앰
-    # if (res > 120):
-    #     res = 90
-    # elif (res < 60):
-    #     res = 90
-    file = open('data.txt', 'w')
-    file.write(str(res))
-    file.close()
-    print(endponit)
+    if res < 60 or res > 120:
+        res = 90
+    print(endpoint)
     print(res)  #각도
 
     newwarp = cv2.warpPerspective(
@@ -396,73 +333,129 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
     cv2.imshow("asdad", color_warp)
     result = cv2.addWeighted(original_image, 1, newwarp, 0.4, 0)
 
-    return pts_mean, result
+    return pts_mean, result, res
 
 
-video = Video()
-while True:
-    # retval, img = cap.read()
-    # if not retval:
-    #     break
-    # cv2.imshow("video", img)
-    # out1.write(img)
-    if not video.frame_available():
-        continue
+# }}}
 
-    img = video.frame()
-    cv2.imshow('video', img)
-    # out1.write(img)
 
-    ## 조감도 wrapped img
-    wrapped_img, minverse, warpmid, distlist = wrapping(img)
-    cv2.imshow('wrapped', wrapped_img)
+class Drone:
 
-    ## 조감도 필터링
-    w_f_img = color_filter(wrapped_img)
-    cv2.imshow('w_f_img', w_f_img)
+    def __init__(self):
+        self.yaw = 90
+        self.deg = 0
 
-    ##조감도 필터링 자르기
-    w_f_r_img = roi(w_f_img)
-    cv2.imshow('w_f_r_img', w_f_r_img)
+    async def run(self):
+        drone = System()
+        await drone.connect(system_address="udp://:14540")
 
-    ## 조감도 선 따기 wrapped img threshold
-    _gray = cv2.cvtColor(w_f_r_img, cv2.COLOR_BGR2GRAY)
-    # ret, thresh = cv2.threshold(_gray, 200, 255, cv2.THRESH_BINARY)
-    ret, thresh = cv2.threshold(_gray, 10, 255, cv2.THRESH_BINARY)
-    cv2.imshow('threshold', thresh)
+        print("-- Arming")
+        try:
+            await drone.action.arm()
+        except Exception as e:
+            print(e)
 
-    ## 선 분포도 조사 histogram
-    leftbase, rightbase = plothistogram(thresh)
-    # plt.plot(hist)
-    # plt.show()
+        print("-- Setting initial setpoint")
+        N_loc = 0
+        E_loc = 0
+        D_loc = -1.2
+        await drone.offboard.set_position_ned(
+            PositionNedYaw(0.0, 0.0, 0.0, self.yaw))
 
-    ## histogram 기반 window roi 영역
-    draw_info = slide_window_search(thresh, leftbase, rightbase)
-    # plt.plot(left_fit)
-    # plt.show()
+        print("-- Starting offboard")
+        try:
+            await drone.offboard.start()
+        except OffboardError as error:
+            print(
+                f"Starting offboard mode failed with error code: {error._result.result}"
+            )
+            print("-- Disarming")
+            await drone.action.disarm()
+            return
 
-    if draw_info != 90:
-        ## 원본 이미지에 라인 넣기
-        meanPts, result = draw_lane_lines(img, thresh, minverse, draw_info,
-                                          warpmid, distlist)
-        cv2.imshow("result", result)
-        # out1.write(result)
-    else:
-        print(draw_info)
+        interval = 0.2
+        velocity = 2  # m/s
+        print(f"-- {-D_loc}m 상승")
+        await drone.offboard.set_position_ned(
+            PositionNedYaw(N_loc, E_loc, D_loc, self.yaw))
+        await asyncio.sleep(5)
 
-    ## 동영상 녹화
-    # out1.write(result)
+        while True:
+            self.yaw += self.deg
+            N_loc += interval * velocity * math.cos(math.pi * self.yaw / 180)
+            E_loc += interval * velocity * math.sin(math.pi * self.yaw / 180)
+            await drone.offboard.set_position_ned(
+                PositionNedYaw(N_loc, E_loc, D_loc, self.yaw))
+            await asyncio.sleep(interval)
 
-    if cv2.waitKey(25) & 0xFF == ord('q'):
-        file = open('data.txt', 'w')
-        file.write('stop')
-        file.close()
-        break
+        print("-- Stopping offboard")
+        try:
+            await drone.offboard.stop()
+        except OffboardError as error:
+            print(
+                f"Stopping offboard mode failed with error code: {error._result.result}"
+            )
 
-# if cap.isOpened():
-#     cap.release()
+        await asyncio.sleep(5)
 
-file = open('data.txt', 'w')
-file.write('stop')
-file.close()
-cv2.destroyAllWindows()
+        await drone.action.land()
+
+    async def cv(self):
+        video = Video()
+
+        while True:
+            if not video.frame_available():
+                continue
+
+            img = await video.frame()
+            cv2.imshow('video', img)
+
+            wrapped_img, minverse, warpmid, distlist = wrapping(img)
+            cv2.imshow('wrapped', wrapped_img)
+
+            ## 조감도 필터링
+            w_f_img = color_filter(wrapped_img)
+            cv2.imshow('w_f_img', w_f_img)
+
+            w_f_r_img = roi(w_f_img)
+            cv2.imshow('w_f_r_img', w_f_r_img)
+
+            ## 조감도 선 따기 wrapped img threshold
+            _gray = cv2.cvtColor(w_f_r_img, cv2.COLOR_BGR2GRAY)
+            # ret, thresh = cv2.threshold(_gray, 200, 255, cv2.THRESH_BINARY)
+            ret, thresh = cv2.threshold(_gray, 10, 255, cv2.THRESH_BINARY)
+            cv2.imshow('threshold', thresh)
+
+            blurred = cv2.GaussianBlur(thresh, (11, 11), 0)
+            thresh = blurred
+            ## 선 분포도 조사 histogram
+            leftbase, rightbase = plothistogram(thresh)
+
+            ## histogram 기반 window roi 영역
+            draw_info = slide_window_search(thresh, leftbase, rightbase)
+
+            if draw_info != 90:
+                ## 원본 이미지에 라인 넣기
+                meanPts, result, res = draw_lane_lines(img, thresh, minverse,
+                                                       draw_info, warpmid,
+                                                       distlist)
+                cv2.imshow("result", result)
+            else:
+                res = 90
+                print(draw_info)
+
+            self.deg = min(max(res - 90, -5), 5)
+
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                break
+            await asyncio.sleep(0.03)
+
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    d = Drone()
+    loop.create_task(d.run())
+    loop.create_task(d.cv())
+    loop.run_forever()
