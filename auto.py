@@ -5,7 +5,9 @@ import cv2
 import gi
 import math
 import matplotlib.pyplot as plt
+import time
 import numpy as np
+import socket
 
 from mavsdk import System
 from mavsdk.offboard import (OffboardError, PositionNedYaw)
@@ -325,8 +327,8 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
     #각도 예외 처리 30도 이상의 각도 변화 없앰
     if res < 60 or res > 120:
         res = 90
-    print(endpoint)
-    print(res)  #각도
+    # print(endpoint)
+    # print(res)  #각도
 
     newwarp = cv2.warpPerspective(
         color_warp, Minv, (original_image.shape[1], original_image.shape[0]))
@@ -340,6 +342,7 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
 
 
 class Drone:
+    t = float("inf")
 
     def __init__(self):
         self.yaw = 90
@@ -380,7 +383,8 @@ class Drone:
             PositionNedYaw(N_loc, E_loc, D_loc, self.yaw))
         await asyncio.sleep(5)
 
-        while True:
+        start_time = time.monotonic()
+        while time.monotonic() < start_time + Drone.t:
             self.yaw += self.deg
             N_loc += interval * velocity * math.cos(math.pi * self.yaw / 180)
             E_loc += interval * velocity * math.sin(math.pi * self.yaw / 180)
@@ -442,7 +446,7 @@ class Drone:
                 cv2.imshow("result", result)
             else:
                 res = 90
-                print(draw_info)
+                # print(draw_info)
 
             self.deg = min(max(res - 90, -5), 5)
 
@@ -452,10 +456,34 @@ class Drone:
 
         cv2.destroyAllWindows()
 
+    @staticmethod
+    async def runserver():
+
+        async def handle_client(reader, writer):
+            request = None
+            while request != 'quit':
+                request = (await reader.read(255)).decode('utf8')
+                response = str(eval(request)) + '\n'
+                writer.write(response.encode('utf8'))
+                try:
+                    t = int(request)
+                    Drone.t = t
+                except:
+                    pass
+                await writer.drain()
+                await asyncio.sleep(0.0)
+            writer.close()
+
+        server = await asyncio.start_server(handle_client, '0.0.0.0', 8808)
+        async with server:
+            await server.serve_forever()
+            await asyncio.sleep(0.0)
+
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     d = Drone()
+    loop.create_task(d.runserver())
     loop.create_task(d.run())
     loop.create_task(d.cv())
     loop.run_forever()
