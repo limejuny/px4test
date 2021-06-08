@@ -2,10 +2,25 @@
 
 <sdf version="1.4">
   <world name="default">
-    <include>
-      <uri>model://sun</uri>
-    </include>
-    <model name="tracksim">
+    <light name='sun' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>0 0 10 0 -0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>0 1 2</direction>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+    <model name="standard">
       <pose> 0 0 0 0 0 0</pose> <!-- Helps to bring track off ground plane for visualizations -->
       <static>true</static>
       <link name="link">
@@ -15,14 +30,14 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>file:///home/$USER/src/px4test/track/track.dae</uri>
+              <uri>file:///home/sazerac/src/px4test/standard/standard.dae</uri>
             </mesh>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>file:///home/$USER/src/px4test/track/track.dae</uri>
+              <uri>file:///home/sazerac/src/px4test/standard/standard.dae</uri>
             </mesh>
           </geometry>
         </visual>
