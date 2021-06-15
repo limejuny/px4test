@@ -345,10 +345,12 @@ def draw_lane_lines(original_image, warped_image, Minv, draw_info, warpmid,
 
 class Drone:
     t = float("inf")
+    v = 2
 
     def __init__(self):
         self.yaw = 90
         self.deg = 0
+        self.right = True
 
     async def run(self):
         drone = System()
@@ -379,7 +381,6 @@ class Drone:
             return
 
         interval = 0.2
-        velocity = 2  # m/s
         print(f"-- {-D_loc}m 상승")
         await drone.offboard.set_position_ned(
             PositionNedYaw(N_loc, E_loc, D_loc, self.yaw))
@@ -388,8 +389,8 @@ class Drone:
         start_time = time.monotonic()
         while time.monotonic() < start_time + Drone.t:
             self.yaw += self.deg
-            N_loc += interval * velocity * math.cos(math.pi * self.yaw / 180)
-            E_loc += interval * velocity * math.sin(math.pi * self.yaw / 180)
+            N_loc += interval * Drone.v * math.cos(math.pi * self.yaw / 180)
+            E_loc += interval * Drone.v * math.sin(math.pi * self.yaw / 180)
             await drone.offboard.set_position_ned(
                 PositionNedYaw(N_loc, E_loc, D_loc, self.yaw))
             await asyncio.sleep(interval)
@@ -447,10 +448,17 @@ class Drone:
                                                        distlist)
                 cv2.imshow("result", result)
             else:
-                res = 90
+                if self.right:
+                    res = 88
+                else:
+                    res = 93
                 # print(draw_info)
 
             self.deg = min(max(res - 90, -5), 5)
+            if self.deg > 0:
+                self.right = True
+            else:
+                self.right = False
 
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break
@@ -469,39 +477,20 @@ class Drone:
                 Drone.t = t
             except:
                 pass
+            try:
+                v = int(json_rcv["speed"])
+                Drone.v = v
+            except:
+                pass
             await websocket.send("websocket_svr send data = " + data_rcv)
             await asyncio.sleep(0.0)
-
-    # @staticmethod
-    # async def runserver():
-
-    #     async def handle_client(reader, writer):
-    #         request = None
-    #         while request != 'quit':
-    #             request = (await reader.read(255)).decode('utf8')
-    #             response = str(eval(request)) + '\n'
-    #             writer.write(response.encode('utf8'))
-    #             try:
-    #                 t = int(request)
-    #                 Drone.t = t
-    #             except:
-    #                 pass
-    #             await writer.drain()
-    #             await asyncio.sleep(0.0)
-    #         writer.close()
-
-    #     server = await asyncio.start_server(handle_client, '0.0.0.0', 8808)
-    #     async with server:
-    #         await server.serve_forever()
-    #         await asyncio.sleep(0.0)
 
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     d = Drone()
-    websoc_svr = websockets.serve(d.accept, "127.0.0.1", 8282)
-    # loop.run_until_complete(websoc_svr)
-    loop.create_task(websoc_svr)
+    websoc_svr = websockets.serve(d.accept, "0.0.0.0", 8282)
+    loop.run_until_complete(websoc_svr)
     loop.create_task(d.run())
     loop.create_task(d.cv())
     loop.run_forever()
