@@ -3,11 +3,13 @@
 import asyncio
 import cv2
 import gi
+import json
 import math
 import matplotlib.pyplot as plt
-import time
 import numpy as np
 import socket
+import time
+import websockets
 
 from mavsdk import System
 from mavsdk.offboard import (OffboardError, PositionNedYaw)
@@ -457,33 +459,49 @@ class Drone:
         cv2.destroyAllWindows()
 
     @staticmethod
-    async def runserver():
-
-        async def handle_client(reader, writer):
-            request = None
-            while request != 'quit':
-                request = (await reader.read(255)).decode('utf8')
-                response = str(eval(request)) + '\n'
-                writer.write(response.encode('utf8'))
-                try:
-                    t = int(request)
-                    Drone.t = t
-                except:
-                    pass
-                await writer.drain()
-                await asyncio.sleep(0.0)
-            writer.close()
-
-        server = await asyncio.start_server(handle_client, '0.0.0.0', 8808)
-        async with server:
-            await server.serve_forever()
+    async def accept(websocket, path):
+        while True:
+            data_rcv = await websocket.recv()
+            json_rcv = json.loads(data_rcv)
+            print("received data = " + data_rcv)
+            try:
+                t = int(json_rcv["time"])
+                Drone.t = t
+            except:
+                pass
+            await websocket.send("websocket_svr send data = " + data_rcv)
             await asyncio.sleep(0.0)
+
+    # @staticmethod
+    # async def runserver():
+
+    #     async def handle_client(reader, writer):
+    #         request = None
+    #         while request != 'quit':
+    #             request = (await reader.read(255)).decode('utf8')
+    #             response = str(eval(request)) + '\n'
+    #             writer.write(response.encode('utf8'))
+    #             try:
+    #                 t = int(request)
+    #                 Drone.t = t
+    #             except:
+    #                 pass
+    #             await writer.drain()
+    #             await asyncio.sleep(0.0)
+    #         writer.close()
+
+    #     server = await asyncio.start_server(handle_client, '0.0.0.0', 8808)
+    #     async with server:
+    #         await server.serve_forever()
+    #         await asyncio.sleep(0.0)
 
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     d = Drone()
-    loop.create_task(d.runserver())
+    websoc_svr = websockets.serve(d.accept, "127.0.0.1", 8282)
+    # loop.run_until_complete(websoc_svr)
+    loop.create_task(websoc_svr)
     loop.create_task(d.run())
     loop.create_task(d.cv())
     loop.run_forever()
